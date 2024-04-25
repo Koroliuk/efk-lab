@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: library-app
+  datasource:
+    url: jdbc:postgresql://localhost:5432/library_db
+    username: library_app
+    password: library
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ["prometheus" ,"metrics"]
+  metrics:
+    tags:
+      application: ${spring.application.name}
