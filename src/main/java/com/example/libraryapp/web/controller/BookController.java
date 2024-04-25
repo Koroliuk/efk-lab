@@ -1,5 +1,6 @@
 package com.example.libraryapp.web.controller;
 
+import com.example.libraryapp.client.FluentdClient;
 import com.example.libraryapp.persistence.model.Book;
 import com.example.libraryapp.service.BookService;
 import com.example.libraryapp.web.dto.BookDto;
@@ -13,15 +14,22 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
+import static com.example.libraryapp.client.LogMapper.createIdMap;
+import static com.example.libraryapp.client.LogMapper.createPage;
+
 @RestController
 @RequestMapping("books")
 public class BookController {
 
+    private static final String BOOK_TAG = "book";
+
     private final BookService bookService;
+    private final FluentdClient fluentdClient;
 
     @Autowired
-    private BookController(BookService bookService) {
+    private BookController(BookService bookService, FluentdClient fluentdClient) {
         this.bookService = bookService;
+        this.fluentdClient = fluentdClient;
     }
 
     @GetMapping
@@ -40,19 +48,24 @@ public class BookController {
                     .map(DtoMapper::convertToDto)
                     .toList();
         }
+        fluentdClient.send(BOOK_TAG, createPage("Request list of books", page, size));
         return ResponseEntity.ok(bookDtos);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<BookDto> getBook(@PathVariable Long id) {
-        return bookService.findById(id)
+        ResponseEntity<BookDto> response = bookService.findById(id)
                 .map(book -> ResponseEntity.ok(DtoMapper.convertToDto(book)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
+        fluentdClient.send(BOOK_TAG, createIdMap(id, String.format("Book with id '%s' was create", id)));
+        return response;
     }
 
     @PostMapping
     public ResponseEntity<BookDto> createPublisher(@Valid @RequestBody BookDto bookDto) {
         Book book = bookService.create(bookDto);
+        Long id = book.getId();
+        fluentdClient.send(BOOK_TAG, createIdMap(id, String.format("Book with id '%s' was create", id)));
         return ResponseEntity.status(HttpStatus.CREATED).body(DtoMapper.convertToDto(book));
     }
 
@@ -61,6 +74,7 @@ public class BookController {
         bookService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         bookDto.setId(id);
         Book updatedBook = bookService.update(bookDto);
+        fluentdClient.send(BOOK_TAG, createIdMap(id, String.format("Book with id '%s' was updated", id)));
         return ResponseEntity.ok(DtoMapper.convertToDto(updatedBook));
     }
 
@@ -68,6 +82,7 @@ public class BookController {
     public ResponseEntity<Void> deleteBook(@PathVariable Long id) {
         bookService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         bookService.delete(id);
+        fluentdClient.send(BOOK_TAG, createIdMap(id, String.format("Book with id '%s' deleted", id)));
         return ResponseEntity.noContent().build();
     }
 
